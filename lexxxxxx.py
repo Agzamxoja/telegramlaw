@@ -18,7 +18,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 # Set up the bot token
-TOKEN = '8100550883:AAEE6H_AYYkXNYMZwMBfqsDlgjsyFvvRGsY'
+TOKEN = os.getenv('TOKEN', '8100550883:AAEE6H_AYYkXNYMZwMBfqsDlgjsyFvvRGsY')  # Use environment variable or default
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Set up the User-Agent string
@@ -164,8 +164,8 @@ async def search(update: Update, context: CallbackContext) -> None:
         await update.message.reply_text(f"Sorry, I couldn't process your '{query}'. Please try again!")
 
 def perform_search(query):
-    api_key = "AIzaSyAHboTbXiBxIPSBJ_Rm18J-yWGrndDLiuE"  # Your existing API key
-    cse_id = "f453edb75011b4e35"  # Replace with your actual CSE ID
+    api_key = os.getenv('API_KEY', 'AIzaSyAHboTbXiBxIPSBJ_Rm18J-yWGrndDLiuE')  # Use environment variable or default
+    cse_id = os.getenv('CSE_ID', 'f453edb75011b4e35')  # Use environment variable or default
     search_url = f"https://www.googleapis.com/customsearch/v1?key={api_key}&cx={cse_id}&q={query}"
     headers = {"User-Agent": USER_AGENT}
 
