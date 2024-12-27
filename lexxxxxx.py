@@ -1,6 +1,8 @@
 import os
 import logging
 import requests
+from flask import Flask, request
+
 import asyncio
 from telegram import Update, Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
@@ -18,13 +20,15 @@ TOKEN = os.getenv('TOKEN', '8100550883:AAEE6H_AYYkXNYMZwMBfqsDlgjsyFvvRGsY')  # 
 API_KEY = os.getenv('API_KEY', 'AIzaSyAHboTbXiBxIPSBJ_Rm18J-yWGrndDLiuE')  # Use environment variable or default
 CSE_ID = os.getenv('CSE_ID', 'f453edb75011b4e35')  # Use environment variable or default
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
-
+PORT = int(os.getenv('PORT', 10000))  # Default port for Render
+WEBHOOK_URL = os.getenv('https://telegramlaw.onrender.com/8100550883:AAEE6H_AYYkXNYMZwMBfqsDlgjsyFvvRGsY')  # Set this for webhook deployment
 # File paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USER_DATA_FILE = os.path.join(BASE_DIR, "user_data.txt")
 PHONE_DATA_FILE = os.path.join(BASE_DIR, "phone_data.txt")
 LOCATION_DATA_FILE = os.path.join(BASE_DIR, "location_data.txt")
 SEARCH_QUERIES_FILE = os.path.join(BASE_DIR, "search_queries.txt")
+app = Flask(__name__)
 
 # Ensure files exist
 for file_path in [USER_DATA_FILE, PHONE_DATA_FILE, LOCATION_DATA_FILE, SEARCH_QUERIES_FILE]:
@@ -252,8 +256,20 @@ def main():
     application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     application.add_handler(MessageHandler(filters.LOCATION, handle_location))
     application.add_handler(CallbackQueryHandler(button))
-
-    application.run_polling()
+    
+    if WEBHOOK_URL:
+        # Use webhook for production
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path=TOKEN,
+            webhook_url=WEBHOOK_URL
+        )
+    else:
+        # Use polling for development
+        application.run_polling()
 
 if __name__ == '__main__':
+     # Start the Flask app
+    app.run(host='0.0.0.0', port=PORT)
     main()
