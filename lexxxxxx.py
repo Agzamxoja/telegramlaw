@@ -1,50 +1,30 @@
-import os
-import logging
-import requests
-from flask import Flask, request
-import asyncio
 from telegram import Update, Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
-from telegram.error import BadRequest, TimedOut
+import requests
 from bs4 import BeautifulSoup
+import logging
+from telegram.error import BadRequest, TimedOut
 import time
+import asyncio
+import os
 
 # Set up logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
-# Load environment variables
+# Set up the bot token
 TOKEN = os.getenv('TOKEN', '8100550883:AAEE6H_AYYkXNYMZwMBfqsDlgjsyFvvRGsY')  # Use environment variable or default
-API_KEY = os.getenv('API_KEY', 'AIzaSyAHboTbXiBxIPSBJ_Rm18J-yWGrndDLiuE')  # Use environment variable or default
-CSE_ID = os.getenv('CSE_ID', 'f453edb75011b4e35')  # Use environment variable or default
-PORT = int(os.getenv('PORT', 10000))  # Default port for Render
+
+# Set up the User-Agent string
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
 
-# File paths
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-USER_DATA_FILE = os.path.join(BASE_DIR, "user_data.txt")
-PHONE_DATA_FILE = os.path.join(BASE_DIR, "phone_data.txt")
-LOCATION_DATA_FILE = os.path.join(BASE_DIR, "location_data.txt")
-SEARCH_QUERIES_FILE = os.path.join(BASE_DIR, "search_queries.txt")
-
-# Ensure files exist
-for file_path in [USER_DATA_FILE, PHONE_DATA_FILE, LOCATION_DATA_FILE, SEARCH_QUERIES_FILE]:
-    if not os.path.exists(file_path):
-        with open(file_path, "w") as f:
-            f.write("")  # Create empty file
-
-# Flask app
-app = Flask(__name__)
-
-# Initialize the bot application
-application = ApplicationBuilder().token(TOKEN).build()
-
-# Webhook route for Flask
-@app.route('/')
+# In-memory storage
+user_data = {}  # Stores user information
+phone_data = {}  # Stores phone numbers
+location_data = {}  # Stores locations
+search_queries = {}  # Stores search queries
 
 async def start(update: Update, context: CallbackContext) -> None:
     """Responds to the /start command"""
@@ -53,22 +33,13 @@ async def start(update: Update, context: CallbackContext) -> None:
     first_name = user.first_name
     last_name = user.last_name
 
-    # Check if the user already exists in the user_data.txt file
-    user_exists = False
-    try:
-        with open(USER_DATA_FILE, "r+") as f:
-            lines = f.readlines()
-            for line in lines:
-                if line.startswith(f"Username: {username},"):
-                    user_exists = True
-                    break
-
-        if not user_exists:
-            # If the user doesn't exist, create a new entry
-            with open(USER_DATA_FILE, "a") as f:
-                f.write(f"Username: {username}, First Name: {first_name}, Last Name: {last_name}\n")
-    except Exception as e:
-        logger.error(f"Error handling user data: {e}")
+    # Check if the user already exists in the user_data dictionary
+    if username not in user_data:
+        # If the user doesn't exist, create a new entry
+        user_data[username] = {
+            "first_name": first_name,
+            "last_name": last_name
+        }
 
     # Create a keyboard with options to share phone number and location
     keyboard = [
@@ -85,21 +56,13 @@ async def handle_contact(update: Update, context: CallbackContext) -> None:
     username = update.effective_user.username
 
     # Check if the user's phone number is already saved
-    try:
-        with open(PHONE_DATA_FILE, "r+") as f:
-            lines = f.readlines()
-            for line in lines:
-                if line.startswith(f"Username: {username},") and f"Phone Number: {phone_number}" in line:
-                    await update.message.reply_text('Your phone number is already saved!')
-                    return
+    if username in phone_data and phone_data[username] == phone_number:
+        await update.message.reply_text('Your phone number is already saved!')
+        return
 
-        # If the phone number is not saved, save it
-        with open(PHONE_DATA_FILE, "a") as f:
-            f.write(f"Username: {username}, Phone Number: {phone_number}\n")
-        await update.message.reply_text('Thank you for sharing your phone number!')
-    except Exception as e:
-        logger.error(f"Error handling contact: {e}")
-        await update.message.reply_text('An error occurred while saving your phone number.')
+    # Save the phone number
+    phone_data[username] = phone_number
+    await update.message.reply_text('Thank you for sharing your phone number!')
 
 async def handle_location(update: Update, context: CallbackContext) -> None:
     """Handles location messages"""
@@ -110,24 +73,17 @@ async def handle_location(update: Update, context: CallbackContext) -> None:
     longitude = location.longitude
 
     # Check if the location already exists
-    try:
-        with open(LOCATION_DATA_FILE, "r+") as f:
-            lines = f.readlines()
-            for i, line in enumerate(lines):
-                if line.startswith(f"User ID: {user_id},"):
-                    lines[i] = f"User ID: {user_id}, Username: {username} Latitude: {latitude}, Longitude: {longitude}\n"
-                    await update.message.reply_text('Your location is already saved!')
-                    break
-            else:
-                lines.append(f"User ID: {user_id}, Username: {username} Latitude: {latitude}, Longitude: {longitude}\n")
-                await update.message.reply_text('Thank you for sharing your location!')
+    if user_id in location_data:
+        await update.message.reply_text('Your location is already saved!')
+        return
 
-            f.seek(0)
-            f.writelines(lines)
-            f.truncate()
-    except Exception as e:
-        logger.error(f"Error handling location: {e}")
-        await update.message.reply_text('An error occurred while saving your location.')
+    # Save the location
+    location_data[user_id] = {
+        "username": username,
+        "latitude": latitude,
+        "longitude": longitude
+    }
+    await update.message.reply_text('Thank you for sharing your location!')
 
 async def search(update: Update, context: CallbackContext) -> None:
     """Handles user queries and returns search results"""
@@ -140,29 +96,10 @@ async def search(update: Update, context: CallbackContext) -> None:
         return
 
     # Save the search query
-    try:
-        temp_file = SEARCH_QUERIES_FILE + ".tmp"
-        with open(SEARCH_QUERIES_FILE, "r") as f, open(temp_file, "w") as temp:
-            user_exists = False
-            for line in f:
-                if line.startswith(f"Username: {username},"):
-                    user_exists = True
-                    existing_queries = line.strip().split(", ")[1:]
-                    new_query = f"{existing_queries}, {query}"
-                    temp.write(f"Username: {username}, {new_query}\n")
-                else:
-                    temp.write(line)
+    if username not in search_queries:
+        search_queries[username] = []
+    search_queries[username].append(query)
 
-            if not user_exists:
-                temp.write(f"Username: {username}, Query: {query}\n")
-
-        os.replace(temp_file, SEARCH_QUERIES_FILE)
-    except Exception as e:
-        logger.error(f"Error saving search query: {e}")
-        await update.message.reply_text('An error occurred while saving your query.')
-        return
-
-    # Perform the search
     try:
         results = perform_search(query)
         if results:
@@ -178,7 +115,9 @@ async def search(update: Update, context: CallbackContext) -> None:
 
 def perform_search(query):
     """Performs a search using the Google Custom Search API"""
-    search_url = f"https://www.googleapis.com/customsearch/v1?key={API_KEY}&cx={CSE_ID}&q={query}"
+    api_key = os.getenv('API_KEY', 'AIzaSyAHboTbXiBxIPSBJ_Rm18J-yWGrndDLiuE')  # Use environment variable or default
+    cse_id = os.getenv('CSE_ID', 'f453edb75011b4e35')  # Use environment variable or default
+    search_url = f"https://www.googleapis.com/customsearch/v1?key={api_key}&cx={cse_id}&q={query}"
     headers = {"User-Agent": USER_AGENT}
 
     max_retries = 3
@@ -259,6 +198,7 @@ async def button(update: Update, context: CallbackContext) -> None:
 
 def main():
     """Starts the bot"""
+    application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
     application.add_handler(MessageHandler(filters.CONTACT, handle_contact))
@@ -268,6 +208,4 @@ def main():
     application.run_polling()
 
 if __name__ == '__main__':
-    # Start the Flask app
-    app.run(host='0.0.0.0', port=PORT)
     main()
