@@ -1,17 +1,21 @@
+import os
+import logging
+import requests
+import asyncio
 from telegram import Update, Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
-import requests
-from bs4 import BeautifulSoup
-import logging
 from telegram.error import BadRequest, TimedOut
+from bs4 import BeautifulSoup
 import time
-import asyncio
-import os
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
 
 # Set up logging
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 logging.getLogger("httpx").setLevel(logging.WARNING)
-
 logger = logging.getLogger(__name__)
 
 # Set up the bot token
@@ -25,6 +29,23 @@ user_data = {}  # Stores user information
 phone_data = {}  # Stores phone numbers
 location_data = {}  # Stores locations
 search_queries = {}  # Stores search queries
+
+# Define the port (use environment variable or default to 10000)
+port = int(os.getenv('PORT', 10000))
+
+# Define a simple HTTP request handler
+class SimpleHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'Hello World!')
+
+# Start the HTTP server in a separate thread
+def start_http_server():
+    server = HTTPServer(('0.0.0.0', port), SimpleHandler)
+    logger.info(f"HTTP server started on port {port}...")
+    server.serve_forever()
 
 async def start(update: Update, context: CallbackContext) -> None:
     """Responds to the /start command"""
@@ -197,7 +218,13 @@ async def button(update: Update, context: CallbackContext) -> None:
     await display_results(update, context)
 
 def main():
-    """Starts the bot"""
+    """Starts the bot and the HTTP server"""
+    # Start the HTTP server in a separate thread
+    http_thread = threading.Thread(target=start_http_server)
+    http_thread.daemon = True  # Daemonize thread to exit when the main program exits
+    http_thread.start()
+
+    # Start the bot
     application = ApplicationBuilder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search))
