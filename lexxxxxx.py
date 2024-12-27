@@ -4,7 +4,7 @@ import requests
 import asyncio
 from telegram import Update, Message, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler
-from telegram.error import BadRequest, TimedOut
+from telegram.error import BadRequest, TimedOut, Conflict
 from bs4 import BeautifulSoup
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -232,7 +232,12 @@ def main():
     application.add_handler(MessageHandler(filters.LOCATION, handle_location))
     application.add_handler(CallbackQueryHandler(button))
 
-    application.run_polling()
+    try:
+        application.run_polling()
+    except Conflict as e:
+        logger.error(f"Conflict error: {e}. Ensure only one bot instance is running.")
+    except Exception as e:
+        logger.error(f"An error occurred: {e}")
 
 if __name__ == '__main__':
     main()
